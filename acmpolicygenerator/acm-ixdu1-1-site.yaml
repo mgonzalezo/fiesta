@@ -1,0 +1,126 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: PolicyGenerator
+metadata:
+  name: acm-ixdu1-1-site
+placementBindingDefaults:
+  name: ixdu1-1-site-placement-binding
+placementRuleDefaults:
+  name: ixdu1-1-site-placement-rules
+  spec:
+    clusterSelector:
+      matchExpressions:
+      - key: sites
+        operator: In
+        values:
+        - ixdu1-1-cars2-lab
+policies:
+- name: ixdu1-1-site-config-policy
+  policyAnnotations:
+    policy.open-cluster-management.io/categories: CM Configuration Management
+    policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+  manifests:
+  # SR-IOV configuration for Intel E810-XXVDA4T NIC
+  - path: source-crs/SriovNetwork.yaml
+    patches:
+    - spec:
+        networkNamespace: openshift-sriov-network-operator
+        vlan: 140  # Adjust VLAN as needed for your network
+        resourceName: intel_e810_net
+      target:
+        name: sriov-nw-du-mh
+  - path: source-crs/SriovNetworkNodePolicy.yaml
+    patches:
+    - spec:
+        deviceType: netdevice
+        nicSelector:
+          pfNames: ["ens6f0#0-7"]  # Intel E810-XXVDA4T NIC - ens6f0 interface
+        numVfs: 8
+        priority: 10
+        resourceName: intel_e810_net
+        nodeSelector:
+          node-role.kubernetes.io/master: ""
+      target:
+        name: sriov-nnp-du-mh
+  # Performance Profile for SMC X12 with Intel processors
+  - path: source-crs/PerformanceProfile.yaml
+    patches:
+    - spec:
+        cpu:
+          # SMC X12 CPU topology - adjust based on actual CPU count
+          # Assuming dual socket with hyperthreading (adjust as needed)
+          isolated: "2-51,54-103"  # Isolated CPUs for workloads
+          reserved: "0-1,52-53"    # Reserved CPUs for system
+        hugepages:
+          defaultHugepagesSize: 1G
+          pages:
+          - count: 32  # Adjust based on available memory
+            size: 1G
+            node: 0
+        realTimeKernel:
+          enabled: true
+        numa:
+          topologyPolicy: "single-numa-node"
+        nodeSelector:
+          node-role.kubernetes.io/master: ""
+        machineConfigPoolSelector:
+          pools.operator.machineconfiguration.openshift.io/master: ""
+      target:
+        name: openshift-node-performance-profile
+  # PTP Configuration for Intel E810 with GPS support
+  - path: source-crs/PtpConfigMaster.yaml
+    patches:
+    - spec:
+        profile:
+        - name: "master"
+          interface: "ens6f0"  # Intel E810 interface
+          ptp4lOpts: "-2 -s --summary_interval -4"
+          phc2sysOpts: "-a -r -n 24"
+          ptpSettings:
+            logReduce: "true"
+        recommend:
+        - profile: "master"
+          priority: 4
+          match:
+          - nodeLabel: "node-role.kubernetes.io/master"
+      target:
+        name: du-ptp-master
+  # Intel E810 specific DPLL configuration
+  - path: source-crs/ConfigMapGeneric.yaml
+    patches:
+    - metadata:
+        name: intel-e810-dpll-config
+        namespace: openshift-sriov-network-operator
+      data:
+        dpll-config.yaml: |
+          # Intel E810 DPLL 6201 configuration
+          # Version: 4.40 0x8001c96a 1.3534.0
+          dpll:
+            device: "ice"
+            driver: "in-tree"
+            firmware_version: "1593"
+            interface: "ens6f0"
+            pci_id: "8086:1593"  # Intel E810 PCI ID
+            configuration:
+              mode: "automatic"
+              reference_clock: "gps"
+              output_enabled: true
+      target:
+        name: intel-e810-dpll-config
+  # Storage configuration for SMC X12
+  - path: source-crs/StorageLVMCluster.yaml
+    patches:
+    - spec:
+        storage:
+          deviceClasses:
+          - name: vg1
+            deviceSelector:
+              paths:
+              - /dev/sdb  # Adjust based on your storage layout
+              - /dev/sdc
+            thinPoolConfig:
+              name: thin-pool-1
+              sizePercent: 90
+              overprovisionRatio: 10
+      target:
+        name: lvmcluster-sample

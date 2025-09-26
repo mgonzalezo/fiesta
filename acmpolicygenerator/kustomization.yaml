@@ -1,5 +1,10 @@
+---
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-- source-crs/
+- ns.yaml
+- acm-common-ranGen.yaml
+- acm-group-du-sno-ranGen.yaml
+- acm-ixdu1-1-site.yaml
+- acm-ixdu1-1-intel-e810.yaml

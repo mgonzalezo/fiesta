@@ -1,0 +1,85 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: PolicyGenerator
+metadata:
+  name: acm-ixdu1-1-intel-e810
+placementBindingDefaults:
+  name: ixdu1-1-intel-e810-placement-binding
+placementRuleDefaults:
+  name: ixdu1-1-intel-e810-placement-rules
+  spec:
+    clusterSelector:
+      matchExpressions:
+      - key: sites
+        operator: In
+        values:
+        - ixdu1-1-cars2-lab
+policies:
+- name: ixdu1-1-intel-e810-policy
+  policyAnnotations:
+    policy.open-cluster-management.io/categories: CM Configuration Management
+    policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+  manifests:
+  # Intel E810 specific SR-IOV Operator Configuration
+  - path: source-crs/SriovOperatorConfig.yaml
+    patches:
+    - spec:
+        enableInjector: true
+        enableOperatorWebhook: true
+        configDaemonNodeSelector:
+          node-role.kubernetes.io/master: ""
+        logLevel: 2
+      target:
+        name: default
+  # Intel E810 Network Node Policy for multiple VFs
+  - path: source-crs/SriovNetworkNodePolicy.yaml
+    patches:
+    - metadata:
+        name: sriov-nnp-intel-e810-dpdk
+      spec:
+        deviceType: vfio-pci  # For DPDK workloads
+        nicSelector:
+          pfNames: ["ens6f0#0-3"]  # First 4 VFs for DPDK
+        numVfs: 8
+        priority: 5
+        resourceName: intel_e810_dpdk
+        nodeSelector:
+          node-role.kubernetes.io/master: ""
+      target:
+        name: sriov-nnp-intel-e810-dpdk
+  - path: source-crs/SriovNetworkNodePolicy.yaml
+    patches:
+    - metadata:
+        name: sriov-nnp-intel-e810-netdev
+      spec:
+        deviceType: netdevice  # For kernel networking
+        nicSelector:
+          pfNames: ["ens6f0#4-7"]  # Last 4 VFs for kernel networking
+        numVfs: 8
+        priority: 6
+        resourceName: intel_e810_netdev
+        nodeSelector:
+          node-role.kubernetes.io/master: ""
+      target:
+        name: sriov-nnp-intel-e810-netdev
+  # Networks for different types of workloads
+  - path: source-crs/SriovNetwork.yaml
+    patches:
+    - metadata:
+        name: sriov-net-intel-e810-dpdk
+      spec:
+        networkNamespace: openshift-sriov-network-operator
+        resourceName: intel_e810_dpdk
+        vlan: 100  # Adjust VLAN as needed
+      target:
+        name: sriov-net-intel-e810-dpdk
+  - path: source-crs/SriovNetwork.yaml
+    patches:
+    - metadata:
+        name: sriov-net-intel-e810-netdev
+      spec:
+        networkNamespace: openshift-sriov-network-operator
+        resourceName: intel_e810_netdev
+        vlan: 200  # Adjust VLAN as needed
+      target:
+        name: sriov-net-intel-e810-netdev

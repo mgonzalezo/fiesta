@@ -1,5 +1,11 @@
+---
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-- extra-manifests/
+- ixdu1-1-siteconfig.yaml
+- KlusterletAddonConfigOverride.yaml
+
+generators:
+- extra-manifests
+- custom-manifests
